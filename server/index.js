@@ -5,7 +5,7 @@ import express from "express";
 
 import { readBrand, writeBrand, findBannedWords } from "./store.js";
 import { listComments, getComment, updateComment, resetComments } from "./comments.js";
-import { draftReply, draftPosts, hasCredentials } from "./claude.js";
+import { draftReply, draftPosts, hasCredentials, describeProvider } from "./llm.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -16,13 +16,13 @@ app.use(express.static(path.join(here, "..", "public")));
 function fail(res, err) {
   const status = err?.status && err.status >= 400 && err.status < 600 ? err.status : 500;
   const message = !hasCredentials()
-    ? "No Anthropic API key configured. Add ANTHROPIC_API_KEY to .env and restart."
+    ? "No API key configured. Add one to .env and restart."
     : err?.message || "Something went wrong.";
   res.status(status).json({ error: message });
 }
 
 app.get("/api/config", (_req, res) => {
-  res.json({ hasCredentials: hasCredentials() });
+  res.json({ hasCredentials: hasCredentials(), ...describeProvider() });
 });
 
 // --- Brand voice profile ---------------------------------------------------
@@ -90,8 +90,10 @@ app.post("/api/check", (req, res) => {
 
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
+  const { provider, model, baseUrl } = describeProvider();
   console.log(`BrandVoice running at http://localhost:${port}`);
+  console.log(`Provider: ${provider} | model: ${model} | base URL: ${baseUrl}`);
   if (!hasCredentials()) {
-    console.log("No ANTHROPIC_API_KEY found - the UI loads, but drafting will error until you add one to .env.");
+    console.log("No API key found - the UI loads, but drafting will error until you add one to .env.");
   }
 });

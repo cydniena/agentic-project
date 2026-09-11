@@ -37,7 +37,7 @@ return "No Anthropic API key configured" until you add one and restart.
 | `skills/brand-voice/SKILL.md` | **The brand voice.** Tone, do's/don'ts, banned phrases, worked examples |
 | `server/skill.js` | Parses the skill; re-reads it when the file changes |
 | `server/index.js` | Express app + JSON API |
-| `server/claude.js` | Claude calls; the skill is the cached system prompt |
+| `server/llm.js` | Model calls (both providers); the skill is the system prompt |
 | `server/store.js` | Manager's overrides on the skill + banned-word matching |
 | `server/comments.js` | Seeded comment queue (status in memory, per process) |
 | `public/` | Single-page UI, no build step |
@@ -50,38 +50,66 @@ holds the tone rules, the do's and don'ts, the banned phrases, and four worked e
 replies and four example posts, each with a line on why it works.
 
 Both drafting features go through it. `draftReply` and `draftPosts` share one
-`systemPrompt()` built from the skill, so the two never drift apart; because the prompt
-is byte-identical for both, the queue and the post drafter share a single prompt cache
-entry. Editing `SKILL.md` lands on the next draft - the file is re-read when its
-mtime changes, no restart needed.
+`systemPrompt()` built from the skill, so the two never drift apart, and this holds for
+either provider - the skill is the `system` block on the Anthropic path and the `system`
+message on the OpenAI-compatible one. On the Anthropic path the prompt is byte-identical
+for both features, so they share a single prompt cache entry. Editing `SKILL.md` lands on
+the next draft - the file is re-read when its mtime changes, no restart needed.
 
 What the Brand Voice tab can override: brand name, guidelines, tone rules, banned
 words. Those are saved to `data/brand.json` and layer on top of the skill's defaults.
 The do's, don'ts and examples come from the skill only - change them by editing the
 file, which keeps them in git and reviewable.
 
-### Pointing it at OpenCode Zen instead of the Anthropic API
+Run `npm test` to check the skill parses and its examples obey their own rules.
 
-Zen exposes an **Anthropic-compatible** `/v1/messages` endpoint with the same Claude model
-IDs, so the SDK and all the prompt code stay exactly as they are. In `.env`:
+### Choosing a model
+
+The app talks to two kinds of endpoint, selected with `LLM_PROVIDER`:
+
+| `LLM_PROVIDER` | Endpoint | Use for |
+|---|---|---|
+| `openai` | `/chat/completions` | OpenCode Zen's DeepSeek, Qwen, GLM, Kimi, GPT... |
+| `anthropic` (default) | `/v1/messages` | Claude, direct or via Zen |
+
+**DeepSeek V4 Flash on OpenCode** — this is the OpenAI-compatible endpoint, not the
+Anthropic one the Claude models use:
 
 ```bash
-ANTHROPIC_BASE_URL=https://opencode.ai/zen
-ANTHROPIC_API_KEY=<your Zen key>
+LLM_PROVIDER=openai
+LLM_BASE_URL=https://opencode.ai/zen/go/v1
+LLM_API_KEY=<your OpenCode key>
+LLM_MODEL=deepseek-v4-flash
 ```
 
-If Zen rejects the key, it wants `Authorization: Bearer` rather than `x-api-key` — put the
-same key in `ANTHROPIC_AUTH_TOKEN` instead and leave `ANTHROPIC_API_KEY` unset.
+**Mind the `/go/` in that path.** OpenCode has two billing tiers on near-identical URLs:
 
-If drafting returns a 400 about `output_config`, the gateway doesn't pass structured
-outputs through: set `STRUCTURED_OUTPUT=off`. The app then asks for JSON in the prompt and
-validates it against the same Zod schema — slightly less reliable, no other behaviour change.
+| Path | Tier | Fails with |
+|---|---|---|
+| `/zen/go/v1` | Go — subscription | — |
+| `/zen/v1` | Zen — prepaid credit wallet | `401 Insufficient balance` if the wallet is empty |
 
-`LLM_MODEL` overrides the model for any non-Claude model Zen offers.
+A Go subscription key sent to `/zen/v1` gets `401 Insufficient balance` even though the key
+is valid and the subscription has plenty of headroom, because the two tiers meter
+separately. Go also **requires an `x-opencode-session` header** on every request; the app
+sends a fresh UUID automatically whenever the base URL is an OpenCode one.
 
-Model: `claude-opus-5` with adaptive thinking at `effort: "low"` — replies are short and
-the low setting keeps them fast enough to draft the whole queue on page load. Replies and
-post sets come back as structured output (Zod schema), so the UI never parses prose.
+**Claude via Zen** — `LLM_PROVIDER=anthropic`, `LLM_BASE_URL=https://opencode.ai/zen`.
+If the gateway 400s on `output_config`, set `STRUCTURED_OUTPUT=off`.
+
+**Anthropic directly** — `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`, nothing else.
+
+The startup log prints the provider, model and base URL in use, and `/api/config` returns
+the same, so you can see at a glance what a demo is actually running on.
+
+### How drafting works
+
+On the `anthropic` provider with a first-party key, replies come back as structured output
+(Zod schema) at `effort: "low"` — short replies, fast enough to draft the whole queue on
+page load. Every other configuration asks for JSON in the prompt and validates it against
+the *same* Zod schema, tolerating markdown fences and surrounding prose. A response that
+doesn't fit the schema surfaces as "unreadable response, try again" on the card rather than
+as a broken draft.
 
 Guardrails in v1:
 
