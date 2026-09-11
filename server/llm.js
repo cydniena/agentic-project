@@ -8,6 +8,8 @@ import OpenAI from "openai";
 import { z } from "zod/v4";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
+import { loadSkill, bulletList } from "./skill.js";
+
 /**
  * Two backends, one interface.
  *
@@ -61,10 +63,37 @@ export function describeProvider() {
   return { provider: PROVIDER, model: MODEL, baseUrl: BASE_URL ?? "(provider default)" };
 }
 
-/** The brand voice profile is the stable prefix of every prompt, so it is cached. */
+/**
+ * The whole system prompt is the brand voice skill, with the manager's saved profile
+ * overriding the four fields the Brand Voice tab exposes. Both drafting features call
+ * this - same voice, same do's and don'ts, same examples - and because it is identical
+ * for both it is a single cached prefix across the queue and the post drafter alike.
+ *
+ * Every rule here comes from the skill file. Nothing about the voice is written in
+ * this module, so editing the markdown is the only way to change what DSTA sounds like.
+ */
 function systemPrompt(brand) {
+  const skill = loadSkill();
+  if (skill.problems.length) throw new Error(skill.problems.join(" "));
+
+  // Each block ends with a blank line so the examples do not run together.
+  const examples = (heading, items, label, field) => [
+    heading,
+    "",
+    ...items.map((ex) =>
+      [
+        `Situation: ${ex.title}`,
+        ex.fields.comment ? `Comment: ${ex.fields.comment}` : null,
+        `${label}: ${ex.fields[field]}`,
+        ex.fields.why_it_works ? `Why it works: ${ex.fields.why_it_works}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n") + "\n"
+    ),
+  ];
+
   return [
-    `You write social media copy for ${brand.brandName}.`,
+    `You write social media copy for ${brand.brandName.replace(/\.$/, "")}.`,
     "",
     "BRAND GUIDELINES",
     brand.guidelines,
@@ -72,14 +101,24 @@ function systemPrompt(brand) {
     "TONE RULES",
     brand.toneRules,
     "",
+    "DO",
+    bulletList(skill.dos),
+    "",
+    "DO NOT",
+    bulletList(skill.donts),
+    "",
     "BANNED WORDS AND PHRASES (never use these, or any close variant):",
-    (brand.bannedWords ?? []).map((w) => `- ${w}`).join("\n") || "- (none)",
+    bulletList(brand.bannedWords),
     "",
     "HARD CONSTRAINTS",
-    "- Never invent facts: no prices, dates, delivery windows, ingredients or policies that were not given to you.",
-    "- If answering properly needs information you do not have, write a reply that acknowledges the person and says the team will follow up with the specifics.",
-    "- Never apologise more than once in a single reply.",
-    "- Output plain text only. No markdown, no hashtags unless the tone rules ask for them.",
+    bulletList(skill.hardConstraints),
+    "",
+    "EXAMPLES OF THE VOICE",
+    "Match the register, length and structure of these. Never reuse their wording or their",
+    "specifics - the situations below are not the one you are writing about.",
+    "",
+    ...examples("On-brand replies:", skill.replyExamples, "Reply", "reply"),
+    ...examples("On-brand posts:", skill.postExamples, "Post", "post"),
   ].join("\n");
 }
 

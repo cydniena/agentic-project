@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { skillDefaults } from "./skill.js";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BRAND_FILE = path.join(here, "..", "data", "brand.json");
 const QUEUE_FILE = path.join(here, "..", "data", "queue.json");
@@ -17,28 +19,39 @@ function writeJson(file, value) {
   fs.renameSync(tmp, file);
 }
 
-export const DEFAULT_BRAND = {
-  brandName: "Northwind Coffee Co.",
-  guidelines:
-    "We are a small-batch coffee roaster. We are warm, practical and never salesy. " +
-    "Always acknowledge the person's specific point before answering. " +
-    "If someone is unhappy, apologise once, plainly, and offer a concrete next step.",
-  toneRules:
-    "- Friendly and human, never corporate\n" +
-    "- 1-3 sentences, under 300 characters\n" +
-    "- At most one emoji, only when the comment is positive\n" +
-    "- No exclamation marks stacked (!!), no ALL CAPS\n" +
-    "- Never promise refunds, discounts or delivery dates we have not confirmed",
-  bannedWords: ["guarantee", "cheap", "best in the world", "ASAP", "synergy"],
-};
+/**
+ * The brand profile is the skill's defaults (`skills/brand-voice/SKILL.md`) with the
+ * manager's saved overrides layered on top. The skill stays the one place the voice is
+ * defined; `data/brand.json` only ever holds what was changed in the Brand Voice tab.
+ *
+ * Cached on the override file's mtime, the same way the skill is, so the six drafts a
+ * page load fires do not each block the event loop on a synchronous read. A save from
+ * the Brand Voice tab changes the mtime, so it still lands on the next draft.
+ */
+let overrides = null;
+
+function readOverrides() {
+  let mtimeMs = null;
+  try {
+    mtimeMs = fs.statSync(BRAND_FILE).mtimeMs;
+  } catch {
+    overrides = null;
+    return {}; // No saved overrides yet - the skill's defaults stand alone.
+  }
+  if (overrides?.mtimeMs === mtimeMs) return overrides.value;
+
+  let value = {};
+  try {
+    value = JSON.parse(fs.readFileSync(BRAND_FILE, "utf8"));
+  } catch {
+    value = {}; // Unreadable or malformed: fall back to the skill rather than failing.
+  }
+  overrides = { mtimeMs, value };
+  return value;
+}
 
 export function readBrand() {
-  try {
-    const raw = fs.readFileSync(BRAND_FILE, "utf8");
-    return { ...DEFAULT_BRAND, ...JSON.parse(raw) };
-  } catch {
-    return { ...DEFAULT_BRAND };
-  }
+  return { ...skillDefaults(), ...readOverrides() };
 }
 
 export function writeBrand(brand) {
@@ -51,6 +64,7 @@ export function writeBrand(brand) {
       : [],
   };
   writeJson(BRAND_FILE, next);
+  overrides = null;
   return next;
 }
 
