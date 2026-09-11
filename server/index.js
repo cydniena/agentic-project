@@ -107,6 +107,19 @@ app.post("/api/comments/:id/status", (req, res) => {
   if (!["pending", "drafted", "approved", "discarded"].includes(status)) {
     return res.status(400).json({ error: "Unknown status." });
   }
+
+  // The browser blocks banned words at copy time, but the browser is not the
+  // guardrail - an edit that reintroduces one must not be recordable as approved.
+  if (status === "approved") {
+    const banned = findBannedWords(finalText ?? "", readBrand().bannedWords);
+    if (banned.length) {
+      return res.status(400).json({
+        error: `Cannot approve: banned word${banned.length > 1 ? "s" : ""} present (${banned.join(", ")}).`,
+        banned,
+      });
+    }
+  }
+
   res.json(updateComment(comment.id, { status, finalText: finalText ?? comment.finalText }));
 });
 
