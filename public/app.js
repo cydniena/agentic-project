@@ -194,16 +194,31 @@ function renderCard(comment) {
     if (act === "copy" || act === "approve") {
       const words = bannedIn(text);
       if (words.length) return toast(`Remove banned word: ${words.join(", ")}`, true);
+      // Copy inside the click, before any await: browsers only allow clipboard
+      // writes while the user gesture is still active.
       if (!(await copy(text))) return toast("Could not access the clipboard.", true);
       if (act === "copy") return toast("Copied - paste it into the channel.");
-      await api("POST", `/api/comments/${comment.id}/status`, { status: "approved", finalText: text });
-      card.classList.add("is-cheered");
-      toast("\u2728 Copied - paste it into the channel.");
+      try {
+        await api("POST", `/api/comments/${comment.id}/status`, {
+          status: "approved",
+          finalText: text,
+        });
+        card.classList.add("is-cheered");
+        toast("\u2728 Copied - paste it into the channel.");
+      } catch (err) {
+        // The server has the final say on banned words, so be explicit that the
+        // text reached the clipboard but was not recorded as approved.
+        toast(`Copied, but not approved. ${err.message}`, true);
+      }
       return loadQueue();
     }
 
     if (act === "discard") {
-      await api("POST", `/api/comments/${comment.id}/status`, { status: "discarded" });
+      try {
+        await api("POST", `/api/comments/${comment.id}/status`, { status: "discarded" });
+      } catch (err) {
+        return toast(err.message, true);
+      }
       return loadQueue();
     }
 
@@ -329,6 +344,53 @@ function fillBrandForm(b) {
   $("#bannedWords").value = (b.bannedWords || []).join("\n");
 }
 
+/**
+ * Reverse onboarding: derive the profile from replies the manager already liked,
+ * instead of asking them to describe their own tone from a blank textarea.
+ * The result only fills the form — saving stays an explicit, separate action.
+ */
+async function inferVoice() {
+  const button = $("#infer-btn");
+  const text = $("#infer-samples").value.trim();
+  const note = $("#infer-note");
+
+  if (!text) return toast("Paste a few replies first.", true);
+  if (!hasKey) return toast("Add ANTHROPIC_API_KEY to .env and restart to use this.", true);
+
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Reading your replies...";
+  note.hidden = true;
+
+  try {
+    const voice = await api("POST", "/api/brand/infer", { text });
+
+    // Keep whatever the manager already typed if the samples did not name a brand.
+    fillBrandForm({ ...voice, brandName: voice.brandName || $("#brandName").value });
+
+    note.textContent = voice.observations;
+    note.hidden = !voice.observations;
+    $("#review-banner").hidden = false;
+
+    for (const id of ["#brandName", "#guidelines", "#toneRules", "#bannedWords"]) {
+      const field = $(id);
+      field.classList.remove("is-filled");
+      void field.offsetWidth; // restart the flash
+      field.classList.add("is-filled");
+    }
+
+    $("#brand-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    toast("\u{1FA84} Profile drafted - review it and save.");
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+$("#infer-btn").addEventListener("click", inferVoice);
+
 $("#brand-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
@@ -339,6 +401,7 @@ $("#brand-form").addEventListener("submit", async (event) => {
       bannedWords: $("#bannedWords").value.split("\n").map((w) => w.trim()).filter(Boolean),
     });
     fillBrandForm(brand);
+    $("#review-banner").hidden = true;
     toast("Brand voice saved - new drafts will use it.");
   } catch (err) {
     toast(err.message, true);

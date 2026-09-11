@@ -22,6 +22,10 @@
 
 * { box-sizing: border-box; }
 
+/* Several rules below set `display`, which would otherwise beat the browser
+   default for [hidden] and leave hidden elements visible. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   color: var(--ink);
@@ -428,4 +432,64 @@ textarea.editor:focus {
   .topbar { gap: 12px; padding: 0 14px; height: 58px; }
   .tab { padding: 7px 11px; }
   .warn { display: none; }
+}
+
+/* ------------------------------------------------- infer brand voice */
+.infer {
+  background: linear-gradient(135deg, #f6f2ff, #fdf0f6);
+  border: 1.5px dashed #d9c9f5;
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 18px;
+  animation: card-in .42s cubic-bezier(.22, 1, .36, 1) both;
+}
+.infer-title { font-size: 16px; margin: 0 0 5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.infer-emoji { display: inline-block; animation: float 3s ease-in-out infinite; }
+.infer-sub { margin: 0 0 12px; font-size: 13.5px; color: var(--muted); }
+.infer textarea {
+  width: 100%;
+  font: inherit;
+  padding: 12px 14px;
+  border: 1.5px solid #e4d9f7;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .8);
+  resize: vertical;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.infer textarea:focus {
+  outline: 0;
+  background: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.infer .row { margin-top: 11px; }
+.infer-note {
+  margin: 11px 0 0;
+  font-size: 13px;
+  color: #5d4a8a;
+  background: rgba(255, 255, 255, .75);
+  border-radius: 12px;
+  padding: 9px 13px;
+  animation: card-in .4s ease both;
+}
+
+.review-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 11px 15px;
+  font-size: 13.5px;
+  background: var(--mint-bg);
+  color: #0d6b4c;
+  border-radius: 14px;
+  animation: card-in .4s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+/* Brief flash so it is obvious which fields the inference just rewrote. */
+.is-filled { animation: field-flash 1.5s ease both; }
+@keyframes field-flash {
+  0%   { border-color: var(--accent); box-shadow: 0 0 0 5px var(--accent-soft); background: #fbf9ff; }
+  70%  { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: #fff; }
+  100% { border-color: var(--line); box-shadow: none; background: var(--card); }
 }

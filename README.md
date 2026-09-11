@@ -25,19 +25,53 @@ return "No Anthropic API key configured" until you add one and restart.
 4. **Post Drafter tab.** Type `Announce our summer discount` → 3 on-brand variations,
    each editable and copyable.
 5. **Brand Voice tab.** Guidelines, tone rules and banned words. Saved to
-   `data/brand.json` and injected into every prompt from the next draft onward.
+   `data/brand.json` as overrides on top of the skill, and injected into every prompt
+   from the next draft onward.
 
 "Reset demo queue" restores all six comments — useful between user sessions.
+
+Approvals, discards and drafts survive a restart: the worked state is saved to
+`data/queue.json` so a crash or a `npm run dev` file-save does not lose a session
+or pay to re-draft everything. Only the status and the reply we drafted are
+stored — the inbound comments are rebuilt from the seed each boot, which is also
+what keeps their arrival times reading as this morning. Reset clears the file.
 
 ## How it works
 
 | File | Role |
 |---|---|
+| `skills/brand-voice/SKILL.md` | **The brand voice.** Tone, do's/don'ts, banned phrases, worked examples |
+| `server/skill.js` | Parses the skill; re-reads it when the file changes |
 | `server/index.js` | Express app + JSON API |
-| `server/llm.js` | Model calls (both providers); the brand profile is the system prompt |
-| `server/store.js` | Brand profile persistence + banned-word matching |
-| `server/comments.js` | Seeded comment queue (status in memory, per process) |
+| `server/llm.js` | Model calls (both providers); the skill is the system prompt |
+| `server/store.js` | Manager's overrides on the skill, queue state + banned-word matching |
+| `server/comments.js` | Seeded comment queue; worked state persisted via `store.js` |
 | `public/` | Single-page UI, no build step |
+
+### The brand voice skill
+
+`skills/brand-voice/SKILL.md` is the single source of truth for how DSTA sounds in public.
+It is plain markdown - a manager can read and edit it without touching code - and it
+holds the tone rules, the do's and don'ts, the banned phrases, and four worked example
+replies and four example posts, each with a line on why it works.
+
+Both drafting features go through it. `draftReply` and `draftPosts` share one
+`systemPrompt()` built from the skill, so the two never drift apart, and this holds for
+either provider - the skill is the `system` block on the Anthropic path and the `system`
+message on the OpenAI-compatible one. On the Anthropic path the prompt is byte-identical
+for both features, so they share a single prompt cache entry. Editing `SKILL.md` lands on
+the next draft - the file is re-read when its mtime changes, no restart needed.
+
+What the Brand Voice tab can override: brand name, guidelines, tone rules, banned
+words. Those are saved to `data/brand.json` and layer on top of the skill's defaults.
+The do's, don'ts and examples come from the skill only - change them by editing the
+file, which keeps them in git and reviewable.
+
+`.claude/skills/brand-voice/SKILL.md` is a Claude Code agent skill that points at the same
+file, so Claude picks up the voice when writing DSTA copy in this repo. It holds no rules of
+its own - the voice is defined once.
+
+Run `npm test` to check the skill parses and its examples obey their own rules.
 
 ### Choosing a model
 
@@ -97,10 +131,18 @@ Guardrails in v1:
 ## Privacy
 
 - No text reaches a social network. Copy-to-clipboard is the only export path.
-- Zero data retention is an **organisation-level setting on your Anthropic account** —
-  enable it there; there is no per-request flag for it. Claude API inputs are not used to
-  train models by default.
+- **Every draft sends the brand voice skill and the comment text to whichever provider
+  `LLM_PROVIDER` names.** With the default `.env` that is OpenCode, running DeepSeek —
+  not Anthropic. Retention and training terms are whatever that provider's are; check
+  them before drafting on anything you would not put in a public comment.
+- Switching to `LLM_PROVIDER=anthropic` sends the same text to the Claude API instead.
+  Zero data retention there is an **organisation-level setting on your Anthropic
+  account**; Claude API inputs are not used to train models by default.
 - The brand profile lives only in `data/brand.json` on your machine (git-ignored).
+- Queue state lives in `data/queue.json` (git-ignored). It holds only statuses and
+  the replies BrandVoice drafted — never the inbound comment text, author handles
+  or channels, which are rebuilt from the seed on each boot. Delete the file, or
+  press "Reset demo queue", to clear it.
 
 ## Out of scope in v1
 
