@@ -1,29 +1,54 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
-const MODEL = process.env.LLM_MODEL || "claude-opus-5";
+/**
+ * Two backends, one interface.
+ *
+ *   anthropic - the Anthropic Messages API (/v1/messages). Also reaches any
+ *               Anthropic-compatible gateway, e.g. OpenCode Zen's Claude models.
+ *   openai    - any OpenAI-compatible /chat/completions endpoint, which is how
+ *               OpenCode Zen serves DeepSeek, Qwen, GLM, Kimi and friends.
+ *
+ * Pick with LLM_PROVIDER; everything above this layer is provider-agnostic.
+ */
+const PROVIDER = (process.env.LLM_PROVIDER || "anthropic").toLowerCase();
+const IS_OPENAI = PROVIDER === "openai";
 
-// Structured outputs and `effort` are first-party Claude API features. A
-// gateway that only mirrors the core Messages API may reject them, so both are
-// switchable; with STRUCTURED_OUTPUT=off we ask for JSON in the prompt instead.
-const USE_STRUCTURED_OUTPUT = process.env.STRUCTURED_OUTPUT !== "off";
+const MODEL = process.env.LLM_MODEL || (IS_OPENAI ? "deepseek-v4-flash" : "claude-opus-5");
+const BASE_URL = process.env.LLM_BASE_URL || undefined;
+const API_KEY = process.env.LLM_API_KEY || undefined;
+
+// Structured outputs and `effort` are first-party Claude API features. A gateway
+// may not forward them, and non-Claude models will not have them at all, so the
+// openai backend always uses prompt-instructed JSON validated by the same schema.
+const USE_STRUCTURED_OUTPUT = !IS_OPENAI && process.env.STRUCTURED_OUTPUT !== "off";
 const EFFORT = process.env.LLM_EFFORT || "low";
 
 /**
  * Lazily constructed so the server still boots (and the UI still loads) before a
- * key is configured. The SDK reads ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN and
- * ANTHROPIC_BASE_URL from the environment, so pointing this at an
- * Anthropic-compatible gateway (e.g. OpenCode Zen) is env config, not code.
+ * key is configured.
  */
 let client = null;
 function getClient() {
-  if (!client) client = new Anthropic();
+  if (client) return client;
+  client = IS_OPENAI
+    ? new OpenAI({ apiKey: API_KEY, baseURL: BASE_URL })
+    : new Anthropic({
+        ...(API_KEY ? { apiKey: API_KEY } : {}),
+        ...(BASE_URL ? { baseURL: BASE_URL } : {}),
+      });
   return client;
 }
 
 export function hasCredentials() {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+  if (IS_OPENAI) return Boolean(API_KEY);
+  return Boolean(API_KEY || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+}
+
+export function describeProvider() {
+  return { provider: PROVIDER, model: MODEL, baseUrl: BASE_URL ?? "(provider default)" };
 }
 
 /** The brand voice profile is the stable prefix of every prompt, so it is cached. */
@@ -66,21 +91,41 @@ const PostsSchema = z.object({
     .length(3),
 });
 
-function refusalGuard(response) {
-  if (response.stop_reason === "refusal") {
-    throw new Error("The model declined to draft this one. Review and write it manually.");
-  }
-}
+const REFUSAL = "The model declined to draft this one. Review and write it manually.";
+const UNREADABLE = "The model returned an unreadable response. Try again.";
 
 /** Pulls the first JSON object out of a plain-text response. */
 function extractJson(text) {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error("No JSON found in the response.");
+  if (start === -1 || end <= start) throw new Error(UNREADABLE);
   return JSON.parse(text.slice(start, end + 1));
 }
 
-async function generate({ brand, userContent, schema, shape }) {
+function validate(schema, raw) {
+  const result = schema.safeParse(raw);
+  if (!result.success) throw new Error(UNREADABLE);
+  return result.data;
+}
+
+const jsonInstruction = (shape) =>
+  `\n\nReply with JSON only, no prose, no markdown fences, in this shape:\n${shape}`;
+
+async function viaOpenAI({ brand, userContent, schema, shape }) {
+  const response = await getClient().chat.completions.create({
+    model: MODEL,
+    max_tokens: 4000,
+    messages: [
+      { role: "system", content: systemPrompt(brand) },
+      { role: "user", content: userContent + jsonInstruction(shape) },
+    ],
+  });
+  const text = response.choices?.[0]?.message?.content;
+  if (!text) throw new Error(UNREADABLE);
+  return validate(schema, extractJson(text));
+}
+
+async function viaAnthropic({ brand, userContent, schema, shape }) {
   const request = {
     model: MODEL,
     max_tokens: 4000,
@@ -95,22 +140,21 @@ async function generate({ brand, userContent, schema, shape }) {
       ...request,
       output_config: { effort: EFFORT, format: zodOutputFormat(schema) },
     });
-    refusalGuard(response);
-    if (!response.parsed_output) throw new Error("The model returned an unreadable response. Try again.");
+    if (response.stop_reason === "refusal") throw new Error(REFUSAL);
+    if (!response.parsed_output) throw new Error(UNREADABLE);
     return response.parsed_output;
   }
 
-  // Gateway fallback: ask for JSON in the prompt, then validate with the same schema.
   const response = await getClient().messages.create({
     ...request,
-    messages: [{ role: "user", content: `${userContent}\n\nReply with JSON only, no prose, in this shape:\n${shape}` }],
+    messages: [{ role: "user", content: userContent + jsonInstruction(shape) }],
   });
-  refusalGuard(response);
+  if (response.stop_reason === "refusal") throw new Error(REFUSAL);
   const text = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-  const result = schema.safeParse(extractJson(text));
-  if (!result.success) throw new Error("The model returned an unreadable response. Try again.");
-  return result.data;
+  return validate(schema, extractJson(text));
 }
+
+const generate = (args) => (IS_OPENAI ? viaOpenAI(args) : viaAnthropic(args));
 
 export async function draftReply({ brand, comment }) {
   return generate({

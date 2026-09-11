@@ -34,33 +34,46 @@ return "No Anthropic API key configured" until you add one and restart.
 | File | Role |
 |---|---|
 | `server/index.js` | Express app + JSON API |
-| `server/claude.js` | Claude calls; the brand profile is the cached system prompt |
+| `server/llm.js` | Model calls (both providers); the brand profile is the system prompt |
 | `server/store.js` | Brand profile persistence + banned-word matching |
 | `server/comments.js` | Seeded comment queue (status in memory, per process) |
 | `public/` | Single-page UI, no build step |
 
-### Pointing it at OpenCode Zen instead of the Anthropic API
+### Choosing a model
 
-Zen exposes an **Anthropic-compatible** `/v1/messages` endpoint with the same Claude model
-IDs, so the SDK and all the prompt code stay exactly as they are. In `.env`:
+The app talks to two kinds of endpoint, selected with `LLM_PROVIDER`:
+
+| `LLM_PROVIDER` | Endpoint | Use for |
+|---|---|---|
+| `openai` | `/chat/completions` | OpenCode Zen's DeepSeek, Qwen, GLM, Kimi, GPT... |
+| `anthropic` (default) | `/v1/messages` | Claude, direct or via Zen |
+
+**DeepSeek V4 Flash on OpenCode Zen** — note this is Zen's *OpenAI-compatible* endpoint,
+not the Anthropic one the Claude models use:
 
 ```bash
-ANTHROPIC_BASE_URL=https://opencode.ai/zen
-ANTHROPIC_API_KEY=<your Zen key>
+LLM_PROVIDER=openai
+LLM_BASE_URL=https://opencode.ai/zen/v1
+LLM_API_KEY=<your Zen key>
+LLM_MODEL=deepseek-v4-flash
 ```
 
-If Zen rejects the key, it wants `Authorization: Bearer` rather than `x-api-key` — put the
-same key in `ANTHROPIC_AUTH_TOKEN` instead and leave `ANTHROPIC_API_KEY` unset.
+**Claude via Zen** — `LLM_PROVIDER=anthropic`, `LLM_BASE_URL=https://opencode.ai/zen`.
+If the gateway 400s on `output_config`, set `STRUCTURED_OUTPUT=off`.
 
-If drafting returns a 400 about `output_config`, the gateway doesn't pass structured
-outputs through: set `STRUCTURED_OUTPUT=off`. The app then asks for JSON in the prompt and
-validates it against the same Zod schema — slightly less reliable, no other behaviour change.
+**Anthropic directly** — `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`, nothing else.
 
-`LLM_MODEL` overrides the model for any non-Claude model Zen offers.
+The startup log prints the provider, model and base URL in use, and `/api/config` returns
+the same, so you can see at a glance what a demo is actually running on.
 
-Model: `claude-opus-5` with adaptive thinking at `effort: "low"` — replies are short and
-the low setting keeps them fast enough to draft the whole queue on page load. Replies and
-post sets come back as structured output (Zod schema), so the UI never parses prose.
+### How drafting works
+
+On the `anthropic` provider with a first-party key, replies come back as structured output
+(Zod schema) at `effort: "low"` — short replies, fast enough to draft the whole queue on
+page load. Every other configuration asks for JSON in the prompt and validates it against
+the *same* Zod schema, tolerating markdown fences and surrounding prose. A response that
+doesn't fit the schema surfaces as "unreadable response, try again" on the card rather than
+as a broken draft.
 
 Guardrails in v1:
 
