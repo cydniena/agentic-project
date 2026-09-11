@@ -30,6 +30,12 @@ return "No Anthropic API key configured" until you add one and restart.
 
 "Reset demo queue" restores all six comments — useful between user sessions.
 
+Approvals, discards and drafts survive a restart: the worked state is saved to
+`data/queue.json` so a crash or a `npm run dev` file-save does not lose a session
+or pay to re-draft everything. Only the status and the reply we drafted are
+stored — the inbound comments are rebuilt from the seed each boot, which is also
+what keeps their arrival times reading as this morning. Reset clears the file.
+
 ## How it works
 
 | File | Role |
@@ -38,8 +44,8 @@ return "No Anthropic API key configured" until you add one and restart.
 | `server/skill.js` | Parses the skill; re-reads it when the file changes |
 | `server/index.js` | Express app + JSON API |
 | `server/llm.js` | Model calls (both providers); the skill is the system prompt |
-| `server/store.js` | Manager's overrides on the skill + banned-word matching |
-| `server/comments.js` | Seeded comment queue (status in memory, per process) |
+| `server/store.js` | Manager's overrides on the skill, queue state + banned-word matching |
+| `server/comments.js` | Seeded comment queue; worked state persisted via `store.js` |
 | `public/` | Single-page UI, no build step |
 
 ### The brand voice skill
@@ -133,6 +139,10 @@ Guardrails in v1:
   Zero data retention there is an **organisation-level setting on your Anthropic
   account**; Claude API inputs are not used to train models by default.
 - The brand profile lives only in `data/brand.json` on your machine (git-ignored).
+- Queue state lives in `data/queue.json` (git-ignored). It holds only statuses and
+  the replies BrandVoice drafted — never the inbound comment text, author handles
+  or channels, which are rebuilt from the seed on each boot. Delete the file, or
+  press "Reset demo queue", to clear it.
 
 ## Out of scope in v1
 

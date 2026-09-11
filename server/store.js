@@ -6,6 +6,18 @@ import { skillDefaults } from "./skill.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BRAND_FILE = path.join(here, "..", "data", "brand.json");
+const QUEUE_FILE = path.join(here, "..", "data", "queue.json");
+
+/**
+ * Write via a temp file and rename, so a crash mid-write cannot leave a
+ * half-written JSON file behind that then fails to parse on the next boot.
+ */
+function writeJson(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf8");
+  fs.renameSync(tmp, file);
+}
 
 /**
  * The brand profile is the skill's defaults (`skills/brand-voice/SKILL.md`) with the
@@ -51,10 +63,71 @@ export function writeBrand(brand) {
       ? brand.bannedWords.map((w) => String(w).trim()).filter(Boolean).slice(0, 100)
       : [],
   };
-  fs.mkdirSync(path.dirname(BRAND_FILE), { recursive: true });
-  fs.writeFileSync(BRAND_FILE, JSON.stringify(next, null, 2), "utf8");
+  writeJson(BRAND_FILE, next);
   overrides = null;
   return next;
+}
+
+const STATUSES = new Set(["pending", "drafted", "approved", "discarded"]);
+
+/**
+ * Queue persistence stores only the worked state - status, draft, finalText -
+ * keyed by comment id. The comments themselves are rebuilt from the seed on
+ * every boot, which keeps two things true:
+ *
+ *   - arrival times stay relative to now, so a restored queue still reads as
+ *     this morning's traffic rather than the day it was first opened;
+ *   - no inbound message text is written to disk, only the replies we drafted.
+ */
+export function readQueueState() {
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(QUEUE_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+  // Anything unrecognised is dropped rather than trusted - this file is on disk
+  // between runs and a stale or hand-edited copy should not break a demo.
+  const clean = {};
+  for (const [id, entry] of Object.entries(raw)) {
+    if (!entry || typeof entry !== "object") continue;
+    if (!STATUSES.has(entry.status)) continue;
+
+    const draft =
+      entry.draft && typeof entry.draft.text === "string"
+        ? {
+            text: entry.draft.text,
+            rationale: typeof entry.draft.rationale === "string" ? entry.draft.rationale : "",
+          }
+        : null;
+
+    // "drafted" without a draft is incoherent: nothing would re-draft it and the
+    // card would sit on the placeholder forever. Treat it as untouched instead.
+    if (entry.status === "drafted" && !draft) continue;
+
+    clean[id] = {
+      status: entry.status,
+      draft,
+      finalText: typeof entry.finalText === "string" ? entry.finalText : null,
+    };
+  }
+  return clean;
+}
+
+export function writeQueueState(comments) {
+  const next = {};
+  for (const c of comments) {
+    // Untouched comments carry no information worth keeping.
+    if (c.status === "pending" && !c.draft) continue;
+    next[c.id] = {
+      status: c.status,
+      draft: c.draft ? { text: c.draft.text, rationale: c.draft.rationale ?? "" } : null,
+      finalText: c.finalText ?? null,
+    };
+  }
+  writeJson(QUEUE_FILE, next);
 }
 
 /** Returns the banned words that appear in `text` (case-insensitive, whole phrase). */

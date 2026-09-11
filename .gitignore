@@ -1,3 +1,5 @@
 node_modules/
 .env
 data/brand.json
+data/queue.json
+data/*.tmp
