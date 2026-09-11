@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { skillDefaults } from "./skill.js";
 
+// One matcher, shared with the browser, so server and client cannot disagree.
+export { findBannedWords } from "../public/banned-words.js";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BRAND_FILE = path.join(here, "..", "data", "brand.json");
 const QUEUE_FILE = path.join(here, "..", "data", "queue.json");
@@ -128,10 +131,4 @@ export function writeQueueState(comments) {
     };
   }
   writeJson(QUEUE_FILE, next);
-}
-
-/** Returns the banned words that appear in `text` (case-insensitive, whole phrase). */
-export function findBannedWords(text, bannedWords) {
-  const hay = String(text ?? "").toLowerCase();
-  return (bannedWords ?? []).filter((w) => w && hay.includes(String(w).toLowerCase()));
 }

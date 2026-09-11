@@ -1,6 +1,8 @@
 // BrandVoice v1 - human-in-the-loop. Nothing here publishes anywhere; the only
 // export is the clipboard.
 
+import { findBannedWords } from "./banned-words.js";
+
 const $ = (sel) => document.querySelector(sel);
 let brand = { bannedWords: [] };
 
@@ -45,8 +47,7 @@ async function copy(text) {
 }
 
 function bannedIn(text) {
-  const hay = String(text).toLowerCase();
-  return (brand.bannedWords || []).filter((w) => hay.includes(String(w).toLowerCase()));
+  return findBannedWords(text, brand.bannedWords || []);
 }
 
 function el(html) {
