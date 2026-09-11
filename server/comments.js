@@ -1,10 +1,18 @@
 /**
  * The v1 demo queue. There is no social-network integration in scope, so incoming
- * comments are seeded here. Status lives in memory for the life of the process.
+ * comments are seeded here.
  *
  * Arrival times are stored as an offset from now rather than a fixed date, so the
  * queue always reads as this morning's traffic however long after it is demoed.
+ *
+ * Worked state - which comments are drafted, approved or discarded - is persisted
+ * to data/queue.json so a restart does not throw away an in-progress session and
+ * pay to re-draft everything. The comments are always rebuilt from the seed and
+ * the saved state merged on top, so arrival times stay relative to now. "Reset
+ * demo queue" remains the explicit way to start over.
  */
+import { readQueueState, writeQueueState } from "./store.js";
+
 const SEED = [
   {
     id: "c1",
@@ -62,7 +70,22 @@ function freshSeed() {
   }));
 }
 
-const state = new Map(freshSeed().map((c) => [c.id, c]));
+/** A fresh queue with any saved work merged back on top of it. */
+function restored() {
+  const saved = readQueueState();
+  return new Map(
+    freshSeed().map((comment) => {
+      const work = saved[comment.id];
+      return [comment.id, work ? { ...comment, ...work } : comment];
+    })
+  );
+}
+
+const state = restored();
+
+function persist() {
+  writeQueueState(listComments());
+}
 
 export function listComments() {
   return [...state.values()];
@@ -77,10 +100,13 @@ export function updateComment(id, patch) {
   if (!current) return null;
   const next = { ...current, ...patch };
   state.set(id, next);
+  persist();
   return next;
 }
 
 export function resetComments() {
+  state.clear();
   for (const c of freshSeed()) state.set(c.id, c);
+  persist();
   return listComments();
 }
