@@ -328,6 +328,53 @@ function fillBrandForm(b) {
   $("#bannedWords").value = (b.bannedWords || []).join("\n");
 }
 
+/**
+ * Reverse onboarding: derive the profile from replies the manager already liked,
+ * instead of asking them to describe their own tone from a blank textarea.
+ * The result only fills the form — saving stays an explicit, separate action.
+ */
+async function inferVoice() {
+  const button = $("#infer-btn");
+  const text = $("#infer-samples").value.trim();
+  const note = $("#infer-note");
+
+  if (!text) return toast("Paste a few replies first.", true);
+  if (!hasKey) return toast("Add ANTHROPIC_API_KEY to .env and restart to use this.", true);
+
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Reading your replies...";
+  note.hidden = true;
+
+  try {
+    const voice = await api("POST", "/api/brand/infer", { text });
+
+    // Keep whatever the manager already typed if the samples did not name a brand.
+    fillBrandForm({ ...voice, brandName: voice.brandName || $("#brandName").value });
+
+    note.textContent = voice.observations;
+    note.hidden = !voice.observations;
+    $("#review-banner").hidden = false;
+
+    for (const id of ["#brandName", "#guidelines", "#toneRules", "#bannedWords"]) {
+      const field = $(id);
+      field.classList.remove("is-filled");
+      void field.offsetWidth; // restart the flash
+      field.classList.add("is-filled");
+    }
+
+    $("#brand-form").scrollIntoView({ behavior: "smooth", block: "start" });
+    toast("\u{1FA84} Profile drafted - review it and save.");
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+$("#infer-btn").addEventListener("click", inferVoice);
+
 $("#brand-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
@@ -338,6 +385,7 @@ $("#brand-form").addEventListener("submit", async (event) => {
       bannedWords: $("#bannedWords").value.split("\n").map((w) => w.trim()).filter(Boolean),
     });
     fillBrandForm(brand);
+    $("#review-banner").hidden = true;
     toast("Brand voice saved - new drafts will use it.");
   } catch (err) {
     toast(err.message, true);

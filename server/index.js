@@ -5,7 +5,13 @@ import express from "express";
 
 import { readBrand, writeBrand, findBannedWords } from "./store.js";
 import { listComments, getComment, updateComment, resetComments } from "./comments.js";
-import { draftReply, draftPosts, hasCredentials, describeProvider } from "./llm.js";
+import {
+  draftReply,
+  draftPosts,
+  inferBrandVoice,
+  hasCredentials,
+  describeProvider,
+} from "./llm.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -31,6 +37,43 @@ app.get("/api/brand", (_req, res) => res.json(readBrand()));
 app.put("/api/brand", (req, res) => {
   try {
     res.json(writeBrand(req.body ?? {}));
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+const MIN_SAMPLES = 3;
+const MAX_SAMPLES = 25;
+
+/**
+ * A blank line is an explicit separator, so trust it whenever one is present -
+ * otherwise two multi-line replies would get chopped into four samples. With no
+ * blank lines at all, each line is its own reply.
+ */
+function splitSamples(text) {
+  const raw = String(text);
+  const parts = /\n\s*\n/.test(raw) ? raw.split(/\n\s*\n/) : raw.split("\n");
+  return parts.map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Propose a profile from past replies. Deliberately does NOT save: the client
+ * fills the form with this and the manager edits, then PUTs it like any other
+ * profile. Samples are used for this one call and never written to disk.
+ */
+app.post("/api/brand/infer", async (req, res) => {
+  const samples = Array.isArray(req.body?.samples)
+    ? req.body.samples.map((s) => String(s).trim()).filter(Boolean)
+    : splitSamples(req.body?.text ?? "");
+
+  if (samples.length < MIN_SAMPLES) {
+    return res.status(400).json({
+      error: `Paste at least ${MIN_SAMPLES} replies - one per line, or separated by a blank line.`,
+    });
+  }
+
+  try {
+    res.json(await inferBrandVoice({ samples: samples.slice(0, MAX_SAMPLES) }));
   } catch (err) {
     fail(res, err);
   }
