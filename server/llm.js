@@ -20,6 +20,11 @@ const MODEL = process.env.LLM_MODEL || (IS_OPENAI ? "deepseek-v4-flash" : "claud
 const BASE_URL = process.env.LLM_BASE_URL || undefined;
 const API_KEY = process.env.LLM_API_KEY || undefined;
 
+// OpenCode Go (/zen/go/v1) is the subscription tier and refuses any request
+// without a session id. Zen's pay-as-you-go tier (/zen/v1) ignores the header,
+// so send it to either rather than making the caller care which one they are on.
+const IS_OPENCODE = Boolean(BASE_URL && /opencode\.ai|\/zen\//.test(BASE_URL));
+
 // Structured outputs and `effort` are first-party Claude API features. A gateway
 // may not forward them, and non-Claude models will not have them at all, so the
 // openai backend always uses prompt-instructed JSON validated by the same schema.
@@ -112,14 +117,17 @@ const jsonInstruction = (shape) =>
   `\n\nReply with JSON only, no prose, no markdown fences, in this shape:\n${shape}`;
 
 async function viaOpenAI({ brand, userContent, schema, shape }) {
-  const response = await getClient().chat.completions.create({
-    model: MODEL,
-    max_tokens: 4000,
-    messages: [
-      { role: "system", content: systemPrompt(brand) },
-      { role: "user", content: userContent + jsonInstruction(shape) },
-    ],
-  });
+  const response = await getClient().chat.completions.create(
+    {
+      model: MODEL,
+      max_tokens: 4000,
+      messages: [
+        { role: "system", content: systemPrompt(brand) },
+        { role: "user", content: userContent + jsonInstruction(shape) },
+      ],
+    },
+    IS_OPENCODE ? { headers: { "x-opencode-session": crypto.randomUUID() } } : undefined
+  );
   const text = response.choices?.[0]?.message?.content;
   if (!text) throw new Error(UNREADABLE);
   return validate(schema, extractJson(text));

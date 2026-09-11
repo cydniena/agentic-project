@@ -48,15 +48,27 @@ The app talks to two kinds of endpoint, selected with `LLM_PROVIDER`:
 | `openai` | `/chat/completions` | OpenCode Zen's DeepSeek, Qwen, GLM, Kimi, GPT... |
 | `anthropic` (default) | `/v1/messages` | Claude, direct or via Zen |
 
-**DeepSeek V4 Flash on OpenCode Zen** — note this is Zen's *OpenAI-compatible* endpoint,
-not the Anthropic one the Claude models use:
+**DeepSeek V4 Flash on OpenCode** — this is the OpenAI-compatible endpoint, not the
+Anthropic one the Claude models use:
 
 ```bash
 LLM_PROVIDER=openai
-LLM_BASE_URL=https://opencode.ai/zen/v1
-LLM_API_KEY=<your Zen key>
+LLM_BASE_URL=https://opencode.ai/zen/go/v1
+LLM_API_KEY=<your OpenCode key>
 LLM_MODEL=deepseek-v4-flash
 ```
+
+**Mind the `/go/` in that path.** OpenCode has two billing tiers on near-identical URLs:
+
+| Path | Tier | Fails with |
+|---|---|---|
+| `/zen/go/v1` | Go — subscription | — |
+| `/zen/v1` | Zen — prepaid credit wallet | `401 Insufficient balance` if the wallet is empty |
+
+A Go subscription key sent to `/zen/v1` gets `401 Insufficient balance` even though the key
+is valid and the subscription has plenty of headroom, because the two tiers meter
+separately. Go also **requires an `x-opencode-session` header** on every request; the app
+sends a fresh UUID automatically whenever the base URL is an OpenCode one.
 
 **Claude via Zen** — `LLM_PROVIDER=anthropic`, `LLM_BASE_URL=https://opencode.ai/zen`.
 If the gateway 400s on `output_config`, set `STRUCTURED_OUTPUT=off`.
