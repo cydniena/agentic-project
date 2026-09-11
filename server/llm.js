@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { z } from "zod";
+// The SDK's zodOutputFormat helper runs zod v4's toJSONSchema, so these schemas
+// must be built with the v4 API. zod 3.25 ships it on the "zod/v4" subpath;
+// importing from "zod" gives v3 schemas, which the helper rejects with
+// "Cannot read properties of undefined (reading 'def')". Only the anthropic
+// backend reaches that helper, which is why the openai path never showed it.
+import { z } from "zod/v4";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 /**
