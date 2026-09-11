@@ -44,7 +44,7 @@ return "No Anthropic API key configured" until you add one and restart.
 
 ### The brand voice skill
 
-`skills/brand-voice/SKILL.md` is the single source of truth for how the brand sounds.
+`skills/brand-voice/SKILL.md` is the single source of truth for how DSTA sounds in public.
 It is plain markdown - a manager can read and edit it without touching code - and it
 holds the tone rules, the do's and don'ts, the banned phrases, and four worked example
 replies and four example posts, each with a line on why it works.
@@ -60,6 +60,10 @@ What the Brand Voice tab can override: brand name, guidelines, tone rules, banne
 words. Those are saved to `data/brand.json` and layer on top of the skill's defaults.
 The do's, don'ts and examples come from the skill only - change them by editing the
 file, which keeps them in git and reviewable.
+
+`.claude/skills/brand-voice/SKILL.md` is a Claude Code agent skill that points at the same
+file, so Claude picks up the voice when writing DSTA copy in this repo. It holds no rules of
+its own - the voice is defined once.
 
 Run `npm test` to check the skill parses and its examples obey their own rules.
 

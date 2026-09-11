@@ -4,8 +4,8 @@ import { loadSkill, skillDefaults } from "./skill.js";
 
 test("parses every section of the skill", () => {
   const s = loadSkill();
-  assert.equal(s.brandName, "Northwind Coffee Co.");
-  assert.match(s.guidelines, /small-batch coffee roaster/);
+  assert.match(s.brandName, /Defence Science and Technology Agency/);
+  assert.match(s.guidelines, /engineers in public service/);
   assert.ok(s.dos.length >= 3, "expected do's");
   assert.ok(s.donts.length >= 3, "expected don'ts");
   assert.ok(s.bannedWords.includes("guarantee"));
@@ -31,9 +31,9 @@ test("no example demonstrates a banned phrase", () => {
       assert.ok(!text.toLowerCase().includes(w.toLowerCase()), `example uses banned "${w}": ${text}`);
 });
 
-test("example replies obey the 300-character tone rule", () => {
+test("example replies obey the 400-character tone rule", () => {
   for (const ex of loadSkill().replyExamples)
-    assert.ok(ex.fields.reply.length <= 300, `${ex.title} is ${ex.fields.reply.length} chars`);
+    assert.ok(ex.fields.reply.length <= 400, `${ex.title} is ${ex.fields.reply.length} chars`);
 });
 
 test("skillDefaults exposes only the four overridable fields", () => {
