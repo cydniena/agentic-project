@@ -2,12 +2,19 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
-const MODEL = "claude-opus-5";
+const MODEL = process.env.LLM_MODEL || "claude-opus-5";
+
+// Structured outputs and `effort` are first-party Claude API features. A
+// gateway that only mirrors the core Messages API may reject them, so both are
+// switchable; with STRUCTURED_OUTPUT=off we ask for JSON in the prompt instead.
+const USE_STRUCTURED_OUTPUT = process.env.STRUCTURED_OUTPUT !== "off";
+const EFFORT = process.env.LLM_EFFORT || "low";
 
 /**
  * Lazily constructed so the server still boots (and the UI still loads) before a
- * key is configured. The SDK resolves ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN /
- * an `ant auth login` profile from the environment.
+ * key is configured. The SDK reads ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN and
+ * ANTHROPIC_BASE_URL from the environment, so pointing this at an
+ * Anthropic-compatible gateway (e.g. OpenCode Zen) is env config, not code.
  */
 let client = null;
 function getClient() {
@@ -59,32 +66,57 @@ const PostsSchema = z.object({
     .length(3),
 });
 
-async function parse({ brand, userContent, format }) {
-  const response = await getClient().messages.parse({
+function refusalGuard(response) {
+  if (response.stop_reason === "refusal") {
+    throw new Error("The model declined to draft this one. Review and write it manually.");
+  }
+}
+
+/** Pulls the first JSON object out of a plain-text response. */
+function extractJson(text) {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error("No JSON found in the response.");
+  return JSON.parse(text.slice(start, end + 1));
+}
+
+async function generate({ brand, userContent, schema, shape }) {
+  const request = {
     model: MODEL,
     max_tokens: 4000,
-    output_config: { effort: "low", format },
     system: [
       { type: "text", text: systemPrompt(brand), cache_control: { type: "ephemeral" } },
     ],
     messages: [{ role: "user", content: userContent }],
-  });
+  };
 
-  if (response.stop_reason === "refusal") {
-    throw new Error(
-      "The model declined to draft this one. Review and write it manually."
-    );
+  if (USE_STRUCTURED_OUTPUT) {
+    const response = await getClient().messages.parse({
+      ...request,
+      output_config: { effort: EFFORT, format: zodOutputFormat(schema) },
+    });
+    refusalGuard(response);
+    if (!response.parsed_output) throw new Error("The model returned an unreadable response. Try again.");
+    return response.parsed_output;
   }
-  if (!response.parsed_output) {
-    throw new Error("The model returned an unreadable response. Try again.");
-  }
-  return response.parsed_output;
+
+  // Gateway fallback: ask for JSON in the prompt, then validate with the same schema.
+  const response = await getClient().messages.create({
+    ...request,
+    messages: [{ role: "user", content: `${userContent}\n\nReply with JSON only, no prose, in this shape:\n${shape}` }],
+  });
+  refusalGuard(response);
+  const text = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  const result = schema.safeParse(extractJson(text));
+  if (!result.success) throw new Error("The model returned an unreadable response. Try again.");
+  return result.data;
 }
 
 export async function draftReply({ brand, comment }) {
-  return parse({
+  return generate({
     brand,
-    format: zodOutputFormat(ReplySchema),
+    schema: ReplySchema,
+    shape: `{"reply": "the draft reply", "rationale": "one short sentence for the reviewer"}`,
     userContent: [
       "Draft a reply to this incoming comment.",
       "",
@@ -96,9 +128,10 @@ export async function draftReply({ brand, comment }) {
 }
 
 export async function draftPosts({ brand, topic }) {
-  const out = await parse({
+  const out = await generate({
     brand,
-    format: zodOutputFormat(PostsSchema),
+    schema: PostsSchema,
+    shape: `{"variations": [{"angle": "2-4 word label", "text": "the full post"}, ... exactly 3 items]}`,
     userContent: [
       `Write 3 distinctly different post options about: ${topic}`,
       "",

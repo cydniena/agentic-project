@@ -39,6 +39,25 @@ return "No Anthropic API key configured" until you add one and restart.
 | `server/comments.js` | Seeded comment queue (status in memory, per process) |
 | `public/` | Single-page UI, no build step |
 
+### Pointing it at OpenCode Zen instead of the Anthropic API
+
+Zen exposes an **Anthropic-compatible** `/v1/messages` endpoint with the same Claude model
+IDs, so the SDK and all the prompt code stay exactly as they are. In `.env`:
+
+```bash
+ANTHROPIC_BASE_URL=https://opencode.ai/zen
+ANTHROPIC_API_KEY=<your Zen key>
+```
+
+If Zen rejects the key, it wants `Authorization: Bearer` rather than `x-api-key` — put the
+same key in `ANTHROPIC_AUTH_TOKEN` instead and leave `ANTHROPIC_API_KEY` unset.
+
+If drafting returns a 400 about `output_config`, the gateway doesn't pass structured
+outputs through: set `STRUCTURED_OUTPUT=off`. The app then asks for JSON in the prompt and
+validates it against the same Zod schema — slightly less reliable, no other behaviour change.
+
+`LLM_MODEL` overrides the model for any non-Claude model Zen offers.
+
 Model: `claude-opus-5` with adaptive thinking at `effort: "low"` — replies are short and
 the low setting keeps them fast enough to draft the whole queue on page load. Replies and
 post sets come back as structured output (Zod schema), so the UI never parses prose.
