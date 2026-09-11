@@ -25,7 +25,8 @@ return "No Anthropic API key configured" until you add one and restart.
 4. **Post Drafter tab.** Type `Announce our summer discount` → 3 on-brand variations,
    each editable and copyable.
 5. **Brand Voice tab.** Guidelines, tone rules and banned words. Saved to
-   `data/brand.json` and injected into every prompt from the next draft onward.
+   `data/brand.json` as overrides on top of the skill, and injected into every prompt
+   from the next draft onward.
 
 "Reset demo queue" restores all six comments — useful between user sessions.
 
@@ -33,11 +34,31 @@ return "No Anthropic API key configured" until you add one and restart.
 
 | File | Role |
 |---|---|
+| `skills/brand-voice/SKILL.md` | **The brand voice.** Tone, do's/don'ts, banned phrases, worked examples |
+| `server/skill.js` | Parses the skill; re-reads it when the file changes |
 | `server/index.js` | Express app + JSON API |
-| `server/claude.js` | Claude calls; the brand profile is the cached system prompt |
-| `server/store.js` | Brand profile persistence + banned-word matching |
+| `server/claude.js` | Claude calls; the skill is the cached system prompt |
+| `server/store.js` | Manager's overrides on the skill + banned-word matching |
 | `server/comments.js` | Seeded comment queue (status in memory, per process) |
 | `public/` | Single-page UI, no build step |
+
+### The brand voice skill
+
+`skills/brand-voice/SKILL.md` is the single source of truth for how the brand sounds.
+It is plain markdown - a manager can read and edit it without touching code - and it
+holds the tone rules, the do's and don'ts, the banned phrases, and four worked example
+replies and four example posts, each with a line on why it works.
+
+Both drafting features go through it. `draftReply` and `draftPosts` share one
+`systemPrompt()` built from the skill, so the two never drift apart; because the prompt
+is byte-identical for both, the queue and the post drafter share a single prompt cache
+entry. Editing `SKILL.md` lands on the next draft - the file is re-read when its
+mtime changes, no restart needed.
+
+What the Brand Voice tab can override: brand name, guidelines, tone rules, banned
+words. Those are saved to `data/brand.json` and layer on top of the skill's defaults.
+The do's, don'ts and examples come from the skill only - change them by editing the
+file, which keeps them in git and reviewable.
 
 ### Pointing it at OpenCode Zen instead of the Anthropic API
 

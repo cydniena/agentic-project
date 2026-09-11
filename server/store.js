@@ -2,30 +2,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { skillDefaults } from "./skill.js";
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BRAND_FILE = path.join(here, "..", "data", "brand.json");
 
-export const DEFAULT_BRAND = {
-  brandName: "Northwind Coffee Co.",
-  guidelines:
-    "We are a small-batch coffee roaster. We are warm, practical and never salesy. " +
-    "Always acknowledge the person's specific point before answering. " +
-    "If someone is unhappy, apologise once, plainly, and offer a concrete next step.",
-  toneRules:
-    "- Friendly and human, never corporate\n" +
-    "- 1-3 sentences, under 300 characters\n" +
-    "- At most one emoji, only when the comment is positive\n" +
-    "- No exclamation marks stacked (!!), no ALL CAPS\n" +
-    "- Never promise refunds, discounts or delivery dates we have not confirmed",
-  bannedWords: ["guarantee", "cheap", "best in the world", "ASAP", "synergy"],
-};
-
+/**
+ * The brand profile is the skill's defaults (`skills/brand-voice/SKILL.md`) with the
+ * manager's saved overrides layered on top. The skill stays the one place the voice is
+ * defined; `data/brand.json` only ever holds what was changed in the Brand Voice tab.
+ */
 export function readBrand() {
+  const defaults = skillDefaults();
   try {
     const raw = fs.readFileSync(BRAND_FILE, "utf8");
-    return { ...DEFAULT_BRAND, ...JSON.parse(raw) };
+    return { ...defaults, ...JSON.parse(raw) };
   } catch {
-    return { ...DEFAULT_BRAND };
+    return defaults;
   }
 }
 
