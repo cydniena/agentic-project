@@ -1,5 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { z } from "zod";
+// The SDK's zodOutputFormat helper runs zod v4's toJSONSchema, so the schemas
+// below must be built with the v4 API. zod 3.25 ships it on the "zod/v4"
+// subpath; importing from "zod" gives v3 schemas, which the helper rejects with
+// "Cannot read properties of undefined (reading 'def')".
+import { z } from "zod/v4";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 const MODEL = "claude-opus-5";
