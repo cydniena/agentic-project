@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BrandVoice</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">BrandVoice</div>
+    <nav class="tabs">
+      <button class="tab is-active" data-tab="queue">Reply Queue <span id="queue-count" class="pill"></span></button>
+      <button class="tab" data-tab="drafter">Post Drafter</button>
+      <button class="tab" data-tab="brand">Brand Voice</button>
+    </nav>
+    <div id="key-warning" class="warn" hidden>No API key configured</div>
+  </header>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- ------------------------------------------------ Reply queue -->
+  <main id="tab-queue" class="panel">
+    <div class="panel-head">
+      <h1>Today's comments</h1>
+      <button id="reset-queue" class="btn btn-ghost">Reset demo queue</button>
+    </div>
+    <div id="queue"></div>
+  </main>
+
+  <!-- ------------------------------------------------ Post drafter -->
+  <main id="tab-drafter" class="panel" hidden>
+    <div class="panel-head"><h1>Post drafter</h1></div>
+    <form id="topic-form" class="topic-form">
+      <input id="topic" type="text" placeholder="Announce our summer discount" autocomplete="off" />
+      <button class="btn btn-primary" type="submit">Generate 3 options</button>
+    </form>
+    <div id="posts"></div>
+  </main>
+
+  <!-- ------------------------------------------------ Brand voice -->
+  <main id="tab-brand" class="panel" hidden>
+    <div class="panel-head"><h1>Brand voice profile</h1></div>
+    <form id="brand-form" class="brand-form">
+      <label>Brand name
+        <input id="brandName" type="text" />
+      </label>
+      <label>Core guidelines
+        <textarea id="guidelines" rows="6"></textarea>
+      </label>
+      <label>Tone rules
+        <textarea id="toneRules" rows="8"></textarea>
+      </label>
+      <label>Banned words <span class="hint">one per line</span>
+        <textarea id="bannedWords" rows="5"></textarea>
+      </label>
+      <button class="btn btn-primary" type="submit">Save profile</button>
+    </form>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
