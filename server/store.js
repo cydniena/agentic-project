@@ -11,15 +11,35 @@ const BRAND_FILE = path.join(here, "..", "data", "brand.json");
  * The brand profile is the skill's defaults (`skills/brand-voice/SKILL.md`) with the
  * manager's saved overrides layered on top. The skill stays the one place the voice is
  * defined; `data/brand.json` only ever holds what was changed in the Brand Voice tab.
+ *
+ * Cached on the override file's mtime, the same way the skill is, so the six drafts a
+ * page load fires do not each block the event loop on a synchronous read. A save from
+ * the Brand Voice tab changes the mtime, so it still lands on the next draft.
  */
-export function readBrand() {
-  const defaults = skillDefaults();
+let overrides = null;
+
+function readOverrides() {
+  let mtimeMs = null;
   try {
-    const raw = fs.readFileSync(BRAND_FILE, "utf8");
-    return { ...defaults, ...JSON.parse(raw) };
+    mtimeMs = fs.statSync(BRAND_FILE).mtimeMs;
   } catch {
-    return defaults;
+    overrides = null;
+    return {}; // No saved overrides yet - the skill's defaults stand alone.
   }
+  if (overrides?.mtimeMs === mtimeMs) return overrides.value;
+
+  let value = {};
+  try {
+    value = JSON.parse(fs.readFileSync(BRAND_FILE, "utf8"));
+  } catch {
+    value = {}; // Unreadable or malformed: fall back to the skill rather than failing.
+  }
+  overrides = { mtimeMs, value };
+  return value;
+}
+
+export function readBrand() {
+  return { ...skillDefaults(), ...readOverrides() };
 }
 
 export function writeBrand(brand) {
@@ -33,6 +53,7 @@ export function writeBrand(brand) {
   };
   fs.mkdirSync(path.dirname(BRAND_FILE), { recursive: true });
   fs.writeFileSync(BRAND_FILE, JSON.stringify(next, null, 2), "utf8");
+  overrides = null;
   return next;
 }
 

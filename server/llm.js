@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
-import { loadSkill } from "./skill.js";
+import { loadSkill, bulletList } from "./skill.js";
 
 /**
  * Two backends, one interface.
@@ -63,29 +63,29 @@ export function describeProvider() {
  * overriding the four fields the Brand Voice tab exposes. Both drafting features call
  * this - same voice, same do's and don'ts, same examples - and because it is identical
  * for both it is a single cached prefix across the queue and the post drafter alike.
+ *
+ * Every rule here comes from the skill file. Nothing about the voice is written in
+ * this module, so editing the markdown is the only way to change what DSTA sounds like.
  */
 function systemPrompt(brand) {
   const skill = loadSkill();
+  if (skill.problems.length) throw new Error(skill.problems.join(" "));
 
-  const examples = (heading, items, field) => [
+  // Each block ends with a blank line so the examples do not run together.
+  const examples = (heading, items, label, field) => [
     heading,
     "",
-    // Each block ends with a blank line so the examples do not run together.
-    ...items.map(
-      (ex) =>
-        [
-          `Situation: ${ex.title}`,
-          ex.fields.comment ? `Comment: ${ex.fields.comment}` : null,
-          `${field[0].toUpperCase()}${field.slice(1)}: ${ex.fields[field]}`,
-          ex.fields.why_it_works ? `Why it works: ${ex.fields.why_it_works}` : null,
-        ]
-          .filter(Boolean)
-          .join("\n") + "\n"
+    ...items.map((ex) =>
+      [
+        `Situation: ${ex.title}`,
+        ex.fields.comment ? `Comment: ${ex.fields.comment}` : null,
+        `${label}: ${ex.fields[field]}`,
+        ex.fields.why_it_works ? `Why it works: ${ex.fields.why_it_works}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n") + "\n"
     ),
   ];
-
-  const list = (items, fallback) =>
-    items.length ? items.map((i) => `- ${i}`).join("\n") : fallback;
 
   return [
     `You write social media copy for ${brand.brandName.replace(/\.$/, "")}.`,
@@ -97,26 +97,23 @@ function systemPrompt(brand) {
     brand.toneRules,
     "",
     "DO",
-    list(skill.dos, "- (none)"),
+    bulletList(skill.dos),
     "",
     "DO NOT",
-    list(skill.donts, "- (none)"),
+    bulletList(skill.donts),
     "",
     "BANNED WORDS AND PHRASES (never use these, or any close variant):",
-    list(brand.bannedWords ?? [], "- (none)"),
+    bulletList(brand.bannedWords),
     "",
     "HARD CONSTRAINTS",
-    "- Never invent facts: no prices, dates, delivery windows, ingredients or policies that were not given to you.",
-    "- If answering properly needs information you do not have, write a reply that acknowledges the person and says the team will follow up with the specifics.",
-    "- Never apologise more than once in a single reply.",
-    "- Output plain text only. No markdown, no hashtags unless the tone rules ask for them.",
+    bulletList(skill.hardConstraints),
     "",
     "EXAMPLES OF THE VOICE",
     "Match the register, length and structure of these. Never reuse their wording or their",
     "specifics - the situations below are not the one you are writing about.",
     "",
-    ...examples("On-brand replies:", skill.replyExamples, "reply"),
-    ...examples("On-brand posts:", skill.postExamples, "post"),
+    ...examples("On-brand replies:", skill.replyExamples, "Reply", "reply"),
+    ...examples("On-brand posts:", skill.postExamples, "Post", "post"),
   ].join("\n");
 }
 

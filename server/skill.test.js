@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { loadSkill, skillDefaults } from "./skill.js";
+import { loadSkill, skillDefaults, findProblems } from "./skill.js";
 
 test("parses every section of the skill", () => {
   const s = loadSkill();
@@ -34,6 +34,32 @@ test("no example demonstrates a banned phrase", () => {
 test("example replies obey the 400-character tone rule", () => {
   for (const ex of loadSkill().replyExamples)
     assert.ok(ex.fields.reply.length <= 400, `${ex.title} is ${ex.fields.reply.length} chars`);
+});
+
+test("the shipped skill has no missing sections", () => {
+  assert.deepEqual(loadSkill().problems, []);
+});
+
+test("hard constraints come from the file, not from code", () => {
+  const s = loadSkill();
+  assert.ok(s.hardConstraints.length >= 3);
+  assert.ok(s.hardConstraints.some((c) => /never invent/i.test(c)));
+});
+
+test("a missing section is reported, not silently dropped", () => {
+  const gutted = {
+    guidelines: "", toneRules: "", dos: [], donts: [],
+    bannedWords: [], hardConstraints: [], replyExamples: [], postExamples: [],
+  };
+  const problems = findProblems(gutted);
+  assert.equal(problems.length, 8, "every required section should be reported");
+  assert.ok(problems.some((p) => p.includes("## Don't")));
+  assert.ok(problems.some((p) => p.includes("## Banned phrases")));
+});
+
+test("headings are matched on letters, so punctuation drift is tolerated", () => {
+  // "## Don't" parses; the parser must not depend on the apostrophe.
+  assert.ok(loadSkill().donts.length > 0);
 });
 
 test("skillDefaults exposes only the four overridable fields", () => {

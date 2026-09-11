@@ -125,9 +125,13 @@ Guardrails in v1:
 ## Privacy
 
 - No text reaches a social network. Copy-to-clipboard is the only export path.
-- Zero data retention is an **organisation-level setting on your Anthropic account** —
-  enable it there; there is no per-request flag for it. Claude API inputs are not used to
-  train models by default.
+- **Every draft sends the brand voice skill and the comment text to whichever provider
+  `LLM_PROVIDER` names.** With the default `.env` that is OpenCode, running DeepSeek —
+  not Anthropic. Retention and training terms are whatever that provider's are; check
+  them before drafting on anything you would not put in a public comment.
+- Switching to `LLM_PROVIDER=anthropic` sends the same text to the Claude API instead.
+  Zero data retention there is an **organisation-level setting on your Anthropic
+  account**; Claude API inputs are not used to train models by default.
 - The brand profile lives only in `data/brand.json` on your machine (git-ignored).
 
 ## Out of scope in v1

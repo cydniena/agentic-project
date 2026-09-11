@@ -82,7 +82,9 @@ app.post("/api/posts/draft", async (req, res) => {
   }
 });
 
-// --- Banned-word check (used by the inline editor as the user types) --------
+// --- Banned-word check -----------------------------------------------------
+// Currently unused: the editor checks client-side against the profile it already
+// holds (public/app.js). Kept as the server-side equivalent for any non-browser caller.
 app.post("/api/check", (req, res) => {
   const brand = readBrand();
   res.json({ banned: findBannedWords(req.body?.text ?? "", brand.bannedWords) });
