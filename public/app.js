@@ -193,16 +193,31 @@ function renderCard(comment) {
     if (act === "copy" || act === "approve") {
       const words = bannedIn(text);
       if (words.length) return toast(`Remove banned word: ${words.join(", ")}`, true);
+      // Copy inside the click, before any await: browsers only allow clipboard
+      // writes while the user gesture is still active.
       if (!(await copy(text))) return toast("Could not access the clipboard.", true);
       if (act === "copy") return toast("Copied - paste it into the channel.");
-      await api("POST", `/api/comments/${comment.id}/status`, { status: "approved", finalText: text });
-      card.classList.add("is-cheered");
-      toast("\u2728 Copied - paste it into the channel.");
+      try {
+        await api("POST", `/api/comments/${comment.id}/status`, {
+          status: "approved",
+          finalText: text,
+        });
+        card.classList.add("is-cheered");
+        toast("\u2728 Copied - paste it into the channel.");
+      } catch (err) {
+        // The server has the final say on banned words, so be explicit that the
+        // text reached the clipboard but was not recorded as approved.
+        toast(`Copied, but not approved. ${err.message}`, true);
+      }
       return loadQueue();
     }
 
     if (act === "discard") {
-      await api("POST", `/api/comments/${comment.id}/status`, { status: "discarded" });
+      try {
+        await api("POST", `/api/comments/${comment.id}/status`, { status: "discarded" });
+      } catch (err) {
+        return toast(err.message, true);
+      }
       return loadQueue();
     }
 
