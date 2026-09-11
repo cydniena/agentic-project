@@ -125,12 +125,6 @@ app.post("/api/posts/draft", async (req, res) => {
   }
 });
 
-// --- Banned-word check (used by the inline editor as the user types) --------
-app.post("/api/check", (req, res) => {
-  const brand = readBrand();
-  res.json({ banned: findBannedWords(req.body?.text ?? "", brand.bannedWords) });
-});
-
 const port = Number(process.env.PORT) || 3000;
 app.listen(port, () => {
   const { provider, model, baseUrl } = describeProvider();
