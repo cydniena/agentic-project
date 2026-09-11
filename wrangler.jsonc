@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "brandvoice",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-09-01",
+
+  // The container runs the Express app as-is. One instance: the queue and brand
+  // profile live on the container's local disk, so a second instance would serve
+  // a different copy of that state.
+  "containers": [
+    {
+      "class_name": "BrandVoiceContainer",
+      "image": "./Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+
+  "durable_objects": {
+    "bindings": [{ "name": "CONTAINER", "class_name": "BrandVoiceContainer" }]
+  },
+
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["BrandVoiceContainer"] }
+  ]
+}
